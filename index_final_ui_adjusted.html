@@ -415,15 +415,15 @@ function initThree(){
         child.geometry.computeVertexNormals();
         // Use MeshNormalMaterial as guaranteed fallback - always visible regardless of lights
         child.geometry.computeVertexNormals();
-        child.material=new THREE.MeshPhysicalMaterial({
-          color:0xc8f135,
-          emissive:0x223300,
-          emissiveIntensity:0.18,
-          roughness:0.42,
-          metalness:0.15,
-          clearcoat:0.35,
-          clearcoatRoughness:0.30,
-        });
+        child.material = new THREE.MeshPhysicalMaterial({
+  color: 0xbff22d,              // stronger lime
+  emissive: 0x6fa500,           // much greener glow
+  emissiveIntensity: 0.32,
+  roughness: 0.38,
+  metalness: 0.10,
+  clearcoat: 0.42,
+  clearcoatRoughness: 0.24
+});
       }
     });
 
