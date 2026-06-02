@@ -170,6 +170,20 @@ svg.label-svg{
 
 /* AI CHAT BUBBLE */
 .ai-chat-wrap{display:flex;align-items:flex-start;gap:12px;padding:0 20px 16px}
+.chat-wrap{padding:0 20px;display:flex;flex-direction:column;gap:10px}
+.chat-msg{display:flex;align-items:flex-start;gap:10px;animation:fadeInUp 0.2s ease both}
+.chat-msg.user{flex-direction:row-reverse}
+.chat-bubble-user{background:rgba(200,241,53,0.12);border:1px solid rgba(200,241,53,0.25);border-radius:16px 16px 4px 16px;padding:10px 14px;font-size:13px;color:var(--text);line-height:1.6;max-width:80%}
+.chat-bubble-coach{background:var(--surface);border:1px solid var(--border);border-radius:16px 16px 16px 4px;padding:10px 14px;font-size:13px;color:var(--text2);line-height:1.6;max-width:80%}
+.chat-avatar{width:28px;height:28px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 0 4px rgba(200,241,53,0.3))}
+.chat-input-row{display:flex;gap:8px;padding:12px 20px;position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--border)}
+.chat-input{flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:14px;font-family:var(--font-body);outline:none}
+.chat-input:focus{border-color:var(--accent)}
+.chat-input:disabled{opacity:0.5}
+.chat-send{background:var(--accent);border:none;border-radius:var(--radius-sm);padding:10px 14px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--accent-text);font-size:16px}
+.chat-send:active{opacity:0.8}
+.chat-send:disabled{opacity:0.4;cursor:default}
+.chat-limit{text-align:center;font-size:11px;color:var(--text3);padding:8px 20px}
 .ai-chat-avatar{width:44px;height:44px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 0 6px rgba(200,241,53,0.4));margin-top:4px}
 .ai-chat-bubble{background:var(--surface);border:1px solid rgba(200,241,53,0.2);border-radius:0 16px 16px 16px;padding:14px 16px;flex:1}
 /* MODAL */
@@ -324,13 +338,19 @@ svg.label-svg{
     <button class="ai-analyse-btn" id="ai-analyse-btn" onclick="askAI()">
       <i class="ti ti-sparkles"></i> lets see the damage
     </button>
-    <div class="ai-chat-wrap" id="ai-response-box" style="display:none">
-      <img src="coach.png" alt="blob" class="ai-chat-avatar">
-      <div class="ai-chat-bubble">
-        <div class="ai-response-text" id="ai-response-text"></div>
-      </div>
+    <!-- Chat messages -->
+    <div class="chat-wrap" id="chat-wrap"></div>
+    <div class="chat-limit" id="chat-limit" style="display:none"></div>
+
+    <!-- Chat input -->
+    <div class="chat-input-row" id="chat-input-row" style="display:none">
+      <input class="chat-input" id="chat-input" type="text" placeholder="ask blob anything..." maxlength="200"
+        onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="chat-send" id="chat-send" onclick="sendChat()">
+        <i class="ti ti-send"></i>
+      </button>
     </div>
-    <div style="height:2rem"></div>
+    <div style="height:1rem"></div>
   </div>
 
   <!-- PHOTOS SCREEN -->
@@ -448,7 +468,7 @@ function getExercisesForMuscle(id){
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+id).classList.add('active');
-  if(id==='ai')renderAIScreen();
+  if(id==='ai'){renderAIScreen();resetChat();}
   if(id==='photos'){renderCalendar();}
   if(id==='home')updateLabels();
 }
@@ -815,14 +835,12 @@ function renderAIScreen(){
   const select=document.getElementById('ai-ex-select');
   const allEx=getAllExercises().filter(ex=>getHistory(ex).length>0);
   select.innerHTML=allEx.length?allEx.map(ex=>`<option value="${ex}">${ex}</option>`).join(''):'<option>no exercises logged yet</option>';
-  document.getElementById('ai-response-box').style.display='none';
   document.getElementById('ai-analyse-btn').disabled=false;
   document.getElementById('ai-analyse-btn').innerHTML='<i class="ti ti-sparkles"></i> lets see the damage';
   renderChart(select.value);
 }
 function onAIExerciseChange(){
   const ex=document.getElementById('ai-ex-select').value;
-  document.getElementById('ai-response-box').style.display='none';
   document.getElementById('ai-analyse-btn').disabled=false;
   document.getElementById('ai-analyse-btn').innerHTML='<i class="ti ti-sparkles"></i> lets see the damage';
   renderChart(ex);
@@ -843,28 +861,124 @@ function renderChart(ex){
   });
 }
 const WORKER_URL='https://bloblift-ai.luckyentry380.workers.dev/ai';
+const MAX_CHAT_MSGS=10;
+let chatHistory=[];
+let chatMsgCount=0;
+let currentChatExercise=null;
+
+function resetChat(){
+  chatHistory=[];chatMsgCount=0;currentChatExercise=null;
+  document.getElementById('chat-wrap').innerHTML='';
+  document.getElementById('chat-input-row').style.display='none';
+  document.getElementById('chat-limit').style.display='none';
+}
+
+function appendMsg(role,text){
+  const wrap=document.getElementById('chat-wrap');
+  const isUser=role==='user';
+  const div=document.createElement('div');
+  div.className='chat-msg '+(isUser?'user':'coach');
+  div.innerHTML=isUser
+    ?`<div class="chat-bubble-user">${text}</div>`
+    :`<img src="coach.png" class="chat-avatar"><div class="chat-bubble-coach">${text}</div>`;
+  wrap.appendChild(div);
+  div.scrollIntoView({behavior:'smooth',block:'end'});
+}
+
+function appendTyping(){
+  const wrap=document.getElementById('chat-wrap');
+  const div=document.createElement('div');
+  div.className='chat-msg coach';div.id='typing-indicator';
+  div.innerHTML='<img src="coach.png" class="chat-avatar"><div class="chat-bubble-coach" style="color:var(--text3)">typing...</div>';
+  wrap.appendChild(div);
+  div.scrollIntoView({behavior:'smooth',block:'end'});
+}
+
+function removeTyping(){
+  const t=document.getElementById('typing-indicator');
+  if(t)t.remove();
+}
+
+function updateChatLimit(){
+  const remaining=MAX_CHAT_MSGS-chatMsgCount;
+  const limitEl=document.getElementById('chat-limit');
+  const input=document.getElementById('chat-input');
+  const send=document.getElementById('chat-send');
+  if(remaining<=3&&remaining>0){
+    limitEl.style.display='block';
+    limitEl.textContent=`${remaining} message${remaining!==1?'s':''} left this session`;
+  }
+  if(remaining<=0){
+    limitEl.style.display='block';
+    limitEl.textContent='session limit reached — come back after logging more sets 💪';
+    input.disabled=true;send.disabled=true;
+  }
+}
+
 async function askAI(){
   const ex=document.getElementById('ai-ex-select').value;
   const btn=document.getElementById('ai-analyse-btn');
-  const box=document.getElementById('ai-response-box');
-  const resp=document.getElementById('ai-response-text');
   const hist=getHistory(ex);
   if(!hist.length){showToast('no data yet — go log something');return}
+  resetChat();
+  currentChatExercise=ex;
   btn.disabled=true;btn.innerHTML='<i class="ti ti-loader"></i> cooking...';
-  box.style.display='flex';resp.classList.add('loading');resp.textContent='reading your logs rn...';
+  const summary=hist.slice(0,8).map(h=>{
+    const allSets=h.sets.map((s,i)=>`set ${i+1}: ${s.weight||0}lbs x ${s.reps||0} reps`).join(', ');
+    return`${fmtDate(h.date)}: ${allSets}`;
+  }).join('\n');
+  chatHistory=[{role:'user',content:`my sessions for ${ex}:\n\n${summary}\n\nanalyse my progress and tell me exactly what to hit next session.`}];
+  appendTyping();
   try{
     const res=await fetch(WORKER_URL,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({exercise:ex,history:hist.slice(0,8).map(h=>({date:fmtDate(h.date),sets:h.sets}))})
+      body:JSON.stringify({messages:chatHistory})
     });
     const data=await res.json();
-    if(data.error){resp.classList.remove('loading');resp.textContent='error: '+data.error;btn.innerHTML='<i class="ti ti-sparkles"></i> retry';btn.disabled=false;return;}
-    resp.classList.remove('loading');resp.textContent=data.response;
-    btn.innerHTML='<i class="ti ti-refresh"></i> roast me again';btn.disabled=false;
+    removeTyping();
+    if(data.error){appendMsg('coach','error: '+data.error);btn.innerHTML='<i class="ti ti-refresh"></i> try again';btn.disabled=false;return;}
+    chatHistory.push({role:'assistant',content:data.response});
+    chatMsgCount++;
+    appendMsg('coach',data.response);
+    document.getElementById('chat-input-row').style.display='flex';
+    updateChatLimit();
+    btn.innerHTML='<i class="ti ti-refresh"></i> restart analysis';btn.disabled=false;
   }catch(e){
-    resp.classList.remove('loading');resp.textContent='fetch failed: '+e.message;
+    removeTyping();
+    appendMsg('coach','network error: '+e.message);
     btn.innerHTML='<i class="ti ti-sparkles"></i> retry';btn.disabled=false;
+  }
+}
+
+async function sendChat(){
+  const input=document.getElementById('chat-input');
+  const send=document.getElementById('chat-send');
+  const msg=input.value.trim();
+  if(!msg)return;
+  if(chatMsgCount>=MAX_CHAT_MSGS){showToast('session limit reached 💀');return}
+  input.value='';input.disabled=true;send.disabled=true;
+  appendMsg('user',msg);
+  chatHistory.push({role:'user',content:msg});
+  chatMsgCount++;
+  appendTyping();
+  try{
+    const res=await fetch(WORKER_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:chatHistory})
+    });
+    const data=await res.json();
+    removeTyping();
+    if(data.error){appendMsg('coach','error: '+data.error);input.disabled=false;send.disabled=false;return;}
+    chatHistory.push({role:'assistant',content:data.response});
+    appendMsg('coach',data.response);
+    updateChatLimit();
+    if(chatMsgCount<MAX_CHAT_MSGS){input.disabled=false;send.disabled=false;input.focus();}
+  }catch(e){
+    removeTyping();
+    appendMsg('coach','network error — try again');
+    input.disabled=false;send.disabled=false;
   }
 }
 
